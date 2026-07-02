@@ -28,7 +28,8 @@ either writes a report or replaces selected spans with `[REDACTED_TYPE]`.
 ```text
 detect(text) -> List[PartialDetection]
 ```
-[PII Architecture Compact.pdf](https://github.com/user-attachments/files/29588469/PII.Architecture.Compact.pdf)
+<img width="1694" height="454" alt="{0908603A-7F57-4627-8723-4CD1CC564B9B}" src="https://github.com/user-attachments/assets/d6ccf605-b085-4f0f-87aa-fe25a9d0f251" />
+
 
 That contract keeps new PII types small: add a detector class, register it, and
 the CLI, reporting, masking, and evaluation code continue to work.
