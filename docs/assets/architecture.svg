@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="700" viewBox="0 0 1120 700" role="img" aria-labelledby="title desc">
+  <title id="title">PII detection and redaction pipeline architecture</title>
+  <desc id="desc">Input files flow into the PII engine, which runs regex detectors and a spaCy NER detector, normalizes detections, and writes reports or masked copies.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#0b1020"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="engine" x1="0" x2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#14b8a6"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#020617" flood-opacity="0.34"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#93a4bd"/>
+    </marker>
+    <style>
+      .label { font: 700 24px Inter, Segoe UI, Arial, sans-serif; fill: #f8fafc; }
+      .small { font: 500 16px Inter, Segoe UI, Arial, sans-serif; fill: #cbd5e1; }
+      .tiny { font: 600 13px Inter, Segoe UI, Arial, sans-serif; fill: #94a3b8; letter-spacing: .04em; }
+      .mono { font: 600 14px Consolas, Monaco, monospace; fill: #dbeafe; }
+      .box { fill: #111827; stroke: #263348; stroke-width: 2; rx: 18; filter: url(#shadow); }
+      .lightbox { fill: #162033; stroke: #34445f; stroke-width: 1.5; rx: 14; }
+      .line { fill: none; stroke: #93a4bd; stroke-width: 3; marker-end: url(#arrow); }
+      .mutedline { fill: none; stroke: #475569; stroke-width: 2; }
+      .chip { fill: #0f766e; opacity: .9; rx: 12; }
+    </style>
+  </defs>
+
+  <rect width="1120" height="700" rx="30" fill="url(#bg)"/>
+  <text x="56" y="62" class="label">PII Detection and Redaction Pipeline</text>
+  <text x="56" y="94" class="small">Structured regex rules and statistical NER run side by side, then produce exact-span reports or redacted copies.</text>
+
+  <rect x="58" y="160" width="210" height="150" class="box"/>
+  <text x="88" y="200" class="tiny">INPUTS</text>
+  <text x="88" y="237" class="mono">.txt</text>
+  <text x="88" y="267" class="mono">.csv</text>
+  <text x="88" y="297" class="mono">.json</text>
+  <text x="154" y="237" class="small">line, row, or field text</text>
+
+  <rect x="400" y="145" width="320" height="180" fill="url(#engine)" rx="22" filter="url(#shadow)"/>
+  <text x="450" y="202" class="label">PIIEngine</text>
+  <text x="450" y="234" class="small">engine.py</text>
+  <rect x="450" y="260" width="214" height="38" fill="#0b1020" opacity=".35" rx="10"/>
+  <text x="472" y="284" class="mono">scan each text unit</text>
+
+  <path class="line" d="M 268 235 C 316 235 342 235 390 235"/>
+
+  <rect x="150" y="420" width="310" height="170" class="box"/>
+  <text x="186" y="462" class="tiny">DETERMINISTIC LAYER</text>
+  <text x="186" y="499" class="label">Regex detectors</text>
+  <text x="186" y="531" class="small">SSN, email, phone, card, IP,</text>
+  <text x="186" y="558" class="small">street address, date of birth</text>
+
+  <rect x="660" y="420" width="310" height="170" class="box"/>
+  <text x="696" y="462" class="tiny">STATISTICAL LAYER</text>
+  <text x="696" y="499" class="label">spaCy NER</text>
+  <text x="696" y="531" class="small">PERSON, LOCATION, ORG, DATE</text>
+  <text x="696" y="558" class="small">for unstructured identifiers</text>
+
+  <path class="line" d="M 495 325 C 420 356 357 375 315 412"/>
+  <path class="line" d="M 625 325 C 700 356 763 375 805 412"/>
+  <path class="line" d="M 460 505 C 520 505 594 505 650 505"/>
+
+  <rect x="476" y="415" width="168" height="92" class="lightbox"/>
+  <text x="506" y="452" class="tiny">COMMON CONTRACT</text>
+  <text x="506" y="480" class="mono">PartialDetection</text>
+
+  <path class="line" d="M 560 507 C 560 548 560 578 560 610"/>
+  <rect x="400" y="610" width="320" height="58" class="lightbox"/>
+  <text x="438" y="646" class="mono">List[Detection] with source offsets</text>
+
+  <path class="line" d="M 720 638 C 790 638 828 638 900 638"/>
+  <rect x="914" y="582" width="150" height="92" class="box"/>
+  <text x="946" y="620" class="tiny">OUTPUTS</text>
+  <text x="946" y="650" class="mono">JSON/CSV report</text>
+  <text x="946" y="674" class="mono">masked copies</text>
+
+  <path class="mutedline" d="M 164 346 H 956"/>
+  <rect x="420" y="334" width="280" height="28" class="chip"/>
+  <text x="450" y="354" class="tiny" fill="#ecfeff">confidence scores make tradeoffs explicit</text>
+</svg>

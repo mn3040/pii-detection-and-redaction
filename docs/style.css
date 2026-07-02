@@ -10,7 +10,7 @@
   --muted:     #5E6580;
   --accent:    #5B9DFF;
 
-  /* PII type colours — each type gets its own identity */
+  /* PII type colors: each type gets its own identity */
   --c-ssn:     #E05252;
   --c-email:   #5B9DFF;
   --c-phone:   #6AC46A;

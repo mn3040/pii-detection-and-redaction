@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PII Detection Pipeline</title>
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 
@@ -12,13 +12,13 @@
   <div class="header-left">
     <h1>PII Detection &amp; Redaction Pipeline</h1>
     <p>
-      Regex detection layer running entirely in your browser — nothing leaves this page.
+      Regex detection layer running entirely in your browser - nothing leaves this page.
       The full pipeline adds spaCy NER for names, locations, and orgs.
     </p>
   </div>
   <nav class="header-links">
-    <a href="https://github.com/mn3040/pii-detection-and-redaction-pipeline" target="_blank">GitHub ↗</a>
-    <a href="https://github.com/mn3040/pii-detection-and-redaction-pipeline#evaluation" target="_blank">Eval metrics ↗</a>
+    <a href="https://github.com/mn3040/pii-detection-and-redaction" target="_blank">GitHub -></a>
+    <a href="https://github.com/mn3040/pii-detection-and-redaction#evaluation" target="_blank">Eval metrics -></a>
   </nav>
 </header>
 
@@ -33,13 +33,12 @@
 </div>
 
 <main>
-  <!-- Left: input -->
   <section class="input-panel">
     <div class="panel-header">
       <span class="panel-label">Input</span>
-      <button id="scan-btn">Scan →</button>
+      <button id="scan-btn">Scan -></button>
     </div>
-    <textarea id="input-text" spellcheck="false" placeholder="Paste text here — try something like:
+    <textarea id="input-text" spellcheck="false" placeholder="Paste text here - try something like:
 
 Hi, I'm Jane Smith. Reach me at jane@example.com or (555) 867-5309.
 SSN: 412-34-5678 | Card: 4532015112830366
@@ -47,7 +46,6 @@ Born: 03/14/1991 | IP: 192.168.0.42
 Ships to: 742 Evergreen Terrace"></textarea>
   </section>
 
-  <!-- Right: output -->
   <section class="output-panel">
     <div class="output-tabs">
       <button class="tab-btn active" data-tab="annotated">Annotated</button>
@@ -56,11 +54,11 @@ Ships to: 742 Evergreen Terrace"></textarea>
     </div>
 
     <div id="tab-annotated" class="tab-pane active">
-      <div id="annotated-view" class="empty-state">← Scan some text to see detections highlighted inline.</div>
+      <div id="annotated-view" class="empty-state">Scan some text to see detections highlighted inline.</div>
     </div>
 
     <div id="tab-masked" class="tab-pane">
-      <div id="masked-view" class="empty-state">← Scan some text to see the redacted version.</div>
+      <div id="masked-view" class="empty-state">Scan some text to see the redacted version.</div>
     </div>
 
     <div id="tab-table" class="tab-pane">
@@ -74,14 +72,14 @@ Ships to: 742 Evergreen Terrace"></textarea>
               <th>Confidence</th>
             </tr>
           </thead>
-          <tbody><tr><td colspan="4" style="color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;padding:0.75rem">← Scan some text to see detections.</td></tr></tbody>
+          <tbody><tr><td colspan="4" style="color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;padding:0.75rem">Scan some text to see detections.</td></tr></tbody>
         </table>
       </div>
     </div>
   </section>
 </main>
 
-<script src="detectors.js?v=2"></script>
-<script src="app.js?v=2"></script>
+<script src="detectors.js?v=3"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
