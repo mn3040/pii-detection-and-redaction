@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PII Detection Pipeline</title>
+<link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <h1>PII Detection &amp; Redaction Pipeline</h1>
+    <p>
+      Regex detection layer running entirely in your browser — nothing leaves this page.
+      The full pipeline adds spaCy NER for names, locations, and orgs.
+    </p>
+  </div>
+  <nav class="header-links">
+    <a href="https://github.com/mn3040/pii-detection-and-redaction-pipeline" target="_blank">GitHub ↗</a>
+    <a href="https://github.com/mn3040/pii-detection-and-redaction-pipeline#evaluation" target="_blank">Eval metrics ↗</a>
+  </nav>
+</header>
+
+<div class="legend">
+  <span class="legend-item"><span class="legend-swatch swatch-ssn"></span>SSN</span>
+  <span class="legend-item"><span class="legend-swatch swatch-email"></span>Email</span>
+  <span class="legend-item"><span class="legend-swatch swatch-phone"></span>Phone</span>
+  <span class="legend-item"><span class="legend-swatch swatch-cc"></span>Credit card</span>
+  <span class="legend-item"><span class="legend-swatch swatch-ip"></span>IP address</span>
+  <span class="legend-item"><span class="legend-swatch swatch-addr"></span>Street address</span>
+  <span class="legend-item"><span class="legend-swatch swatch-dob"></span>Date of birth</span>
+</div>
+
+<main>
+  <!-- Left: input -->
+  <section class="input-panel">
+    <div class="panel-header">
+      <span class="panel-label">Input</span>
+      <button id="scan-btn">Scan →</button>
+    </div>
+    <textarea id="input-text" spellcheck="false" placeholder="Paste text here — try something like:
+
+Hi, I'm Jane Smith. Reach me at jane@example.com or (555) 867-5309.
+SSN: 412-34-5678 | Card: 4532015112830366
+Born: 03/14/1991 | IP: 192.168.0.42
+Ships to: 742 Evergreen Terrace"></textarea>
+  </section>
+
+  <!-- Right: output -->
+  <section class="output-panel">
+    <div class="output-tabs">
+      <button class="tab-btn active" data-tab="annotated">Annotated</button>
+      <button class="tab-btn" data-tab="masked">Masked</button>
+      <button class="tab-btn" data-tab="table">Detections</button>
+    </div>
+
+    <div id="tab-annotated" class="tab-pane active">
+      <div id="annotated-view" class="empty-state">← Scan some text to see detections highlighted inline.</div>
+    </div>
+
+    <div id="tab-masked" class="tab-pane">
+      <div id="masked-view" class="empty-state">← Scan some text to see the redacted version.</div>
+    </div>
+
+    <div id="tab-table" class="tab-pane">
+      <div class="detections-table-wrap">
+        <table id="detections-table">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Matched text</th>
+              <th>Span</th>
+              <th>Confidence</th>
+            </tr>
+          </thead>
+          <tbody><tr><td colspan="4" style="color:var(--muted);font-family:'IBM Plex Mono',monospace;font-size:0.82rem;padding:0.75rem">← Scan some text to see detections.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="detectors.js?v=2"></script>
+<script src="app.js?v=2"></script>
+</body>
+</html>

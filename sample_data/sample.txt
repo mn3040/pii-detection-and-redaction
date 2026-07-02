@@ -1,0 +1,7 @@
+Hi, my name is John Smith and I live in Chicago.
+You can reach me at john.smith@example.com or call (312) 555-0198.
+My SSN is 412-34-5678 and my card number is 4532015112830366.
+I was born on 04/12/1990.
+Server logs show a connection from 192.168.1.10.
+This is a normal sentence with no sensitive information at all.
+He works for Acme Corporation and met the client at 221 Baker Street.
