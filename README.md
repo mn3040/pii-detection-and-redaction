@@ -9,8 +9,6 @@ writes masked copies.
 [Architecture](#architecture) |
 [Evaluation](#evaluation)
 
-![Architecture diagram](docs/assets/architecture.svg)
-
 ## What This Shows
 
 | Area | Design choice | Why it matters |
@@ -30,6 +28,7 @@ either writes a report or replaces selected spans with `[REDACTED_TYPE]`.
 ```text
 detect(text) -> List[PartialDetection]
 ```
+[PII Architecture Compact.pdf](https://github.com/user-attachments/files/29588469/PII.Architecture.Compact.pdf)
 
 That contract keeps new PII types small: add a detector class, register it, and
 the CLI, reporting, masking, and evaluation code continue to work.
