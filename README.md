@@ -241,17 +241,33 @@ right-to-left so earlier offsets stay valid throughout.
 
 ## Evaluation
 
-The test set is synthetic. `data_gen/generate_test_data.py` uses Faker to
-generate fake PII and writes ground-truth spans to
-`eval/test_dataset/labels.json`, so the repository never needs real personal
-data.
+### What the test set does and does not prove
 
-Run the evaluation:
+The primary test set is synthetic: `data_gen/generate_test_data.py` uses Faker
+to generate fake PII and writes ground-truth spans to
+`eval/test_dataset/labels.json`, so the repository never contains real personal
+data. This is deliberate — but it creates a circularity worth naming. Faker
+produces SSNs with dashes, emails in standard form, and US-format phone numbers.
+The regex detectors were written with those exact formats in mind, so near-perfect
+regex scores on Faker data are partly self-fulfilling.
+
+Two things break that circularity: a hand-crafted adversarial suite that targets
+formats Faker never generates, and a domain-transfer check against the CoNLL-2003
+newswire corpus, which the detectors were not designed for.
+
+Run everything:
 
 ```bash
-python data_gen/generate_test_data.py
-python eval/evaluate.py
+python data_gen/generate_test_data.py   # regenerate synthetic test set
+python eval/evaluate.py                 # main eval with threshold sweep
+python eval/adversarial_cases.py        # edge cases and failure analysis
+python eval/conll_eval.py               # domain-transfer check (requires: pip install datasets)
+python eval/plots.py                    # regenerate all charts from live results
 ```
+
+### Synthetic test set results
+
+![F1 by entity type](docs/assets/f1-by-entity.png)
 
 | Detector set | Precision | Recall | F1 |
 |---|---:|---:|---:|
@@ -259,39 +275,94 @@ python eval/evaluate.py
 | NER only | 0.379 | 0.371 | 0.375 |
 | Combined regex + NER | 0.599 | 0.907 | 0.721 |
 
-| Entity type | Precision | Recall | F1 |
-|---|---:|---:|---:|
-| SSN | 1.000 | 1.000 | 1.000 |
-| EMAIL | 1.000 | 1.000 | 1.000 |
-| PHONE | 1.000 | 1.000 | 1.000 |
-| CREDIT_CARD | 1.000 | 1.000 | 1.000 |
-| IP_ADDRESS | 1.000 | 1.000 | 1.000 |
-| DATE_OF_BIRTH | 1.000 | 1.000 | 1.000 |
-| PERSON | 0.808 | 0.875 | 0.840 |
-| LOCATION | 0.833 | 0.909 | 0.870 |
-| STREET_ADDRESS | 1.000 | 0.200 | 0.333 |
-| ORGANIZATION | 0.227 | 0.833 | 0.357 |
+The regex numbers look good because Faker generates exactly the formats the
+patterns target. The NER numbers are more honest — spaCy runs on text it has
+never seen and gets partial credit for unstructured entities.
 
-The result is the expected privacy tradeoff: regex detection is precise but
-misses unstructured PII, while NER improves recall and introduces more false
-positives. Reporting the detector family and confidence score makes those
-tradeoffs visible to downstream reviewers.
+### Precision-recall tradeoff by entity type
 
-### Known Limitations
+![Precision-recall scatter](docs/assets/pr-scatter.png)
 
-**ORGANIZATION (F1 0.357):** `en_core_web_sm` tags many capitalized common nouns
-as organizations — words like "SSN" or "Card" in the test sentences get flagged
-because they appear mid-sentence in uppercase. This is a well-documented weakness
-of small NER models on non-news text. A larger model (`en_core_web_trf`) or a
-domain-specific fine-tuned model would reduce this substantially at higher
-inference cost.
+The scatter plot shows each entity type as a single point. Top-right is ideal.
+The six regex-detected structured types cluster at (1.0, 1.0). PERSON and
+LOCATION sit in the upper-right with real but imperfect scores. STREET_ADDRESS
+sits at the top-left — precision is 1.0 but recall is 0.2, because the regex
+anchors on a recognized suffix word and misses abbreviated forms. ORGANIZATION
+sits at the bottom-right — spaCy recalls most true organizations but tags
+capitalized common nouns (like "SSN" or "Card" in the test sentences) as
+organizations too. At P=0.23, three out of four ORGANIZATION detections are
+false positives.
 
-**STREET_ADDRESS (F1 0.333):** The regex is intentionally conservative — it
-anchors on a street number followed by a capitalized name and a recognized suffix
-word. This keeps precision at 1.0 but misses addresses that use abbreviations
-(`123 Main St`), omit the suffix (`742 Evergreen`), or follow non-US
-conventions. Recall could be improved by adding suffix variants and relaxing
-capitalization, at the cost of more false positives in ordinary text.
+### Confidence threshold and operating point
+
+The NER confidence scores (PERSON=0.75, GPE=0.70, ORG=0.65, DATE=0.60) are
+heuristics, not calibrated probabilities. They exist to pick a winner when a
+regex match and a NER match overlap, and to let users tune the operating point
+by setting a confidence floor.
+
+![Confidence threshold sweep](docs/assets/threshold-sweep.png)
+
+Raising the threshold from 0.65 to 0.70 excludes ORGANIZATION detections.
+That move trades a small recall drop for a substantial precision gain — the
+right choice for any application where false positives mean legitimate text
+gets masked.
+
+### Adversarial edge cases
+
+The Faker suite only tests formats it knows how to generate. These 40 hand-crafted
+cases probe everything Faker never produces: alternative separators, international
+formats, false-positive traps (ZIP+4 codes that match SSN digit counts, version
+strings that match IP patterns), and NER ambiguity (Apple as a company vs. a
+fruit, Washington as a person vs. a city).
+
+![Adversarial results by category](docs/assets/adversarial-results.png)
+
+Expected failures — things the system is designed to miss — are documented as
+such. The chart separates deliberate design choices from genuine bugs.
+
+**Known misses by design:**
+
+- SSN with spaces (`412 34 5678`) and dots (`412.34.5678`) — regex anchors on
+  hyphens. Adding space/dot variants would also catch more false positives in
+  structured data.
+- Phone numbers in non-US formats (`+44 20 7946 0958`) — the detector is
+  explicitly US-only.
+- Dates written in natural language (`born on the 14th of March, 1991`) — regex
+  handles numeric formats only.
+- Street addresses without a recognized suffix word (`742 Evergreen`) — intentional
+  conservative tradeoff to keep precision at 1.0.
+- Internationalized email domains (`user@ünicode-domain.de`) — regex matches ASCII
+  characters only.
+
+**Known NER false positives:**
+
+Capitalized acronyms and nouns in mid-sentence position are the core weakness
+of `en_core_web_sm` for this use case. "SSN", "Card", and similar tokens get
+tagged as ORGANIZATION because the model was trained on newswire text where
+unexplained capitalized words tend to be proper nouns.
+
+### Domain transfer: CoNLL-2003
+
+CoNLL-2003 is Reuters newswire from 1996, labeled with PERSON, ORG, LOC, and
+MISC. It has no structured PII (no SSNs, credit cards, or IP addresses), so
+only the NER detector can be compared here. Running `eval/conll_eval.py` shows
+how the spaCy detector performs on text it was not designed for. Scores are
+lower than on the Faker test set — that is the honest cost of domain shift, not
+a calibration issue. The structured-PII detectors have no CoNLL equivalent and
+are excluded from this comparison.
+
+### Production recommendation
+
+| Entity type | Recommended for automated redaction? |
+|---|---|
+| SSN, EMAIL, PHONE, CREDIT_CARD, IP_ADDRESS, DATE_OF_BIRTH | Yes — regex, precision 1.0 |
+| PERSON, LOCATION | Yes — NER, precision 0.81–0.83, acceptable for most use cases |
+| STREET_ADDRESS | With review — precision 1.0 but recall 0.2; misses most addresses |
+| ORGANIZATION | No — precision 0.23 means 3 in 4 flags are false positives |
+
+Exclude ORGANIZATION from any pipeline where masking false positives has a real
+cost. Use `--no-ner` if only structured PII is needed, or set a confidence
+threshold of 0.70 to include PERSON and LOCATION while dropping ORGANIZATION.
 
 ## GitHub Pages Demo
 

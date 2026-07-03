@@ -23,6 +23,15 @@ TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), "test_dataset")
 TEXT_PATH = os.path.join(TEST_DATA_DIR, "test_data.txt")
 LABELS_PATH = os.path.join(TEST_DATA_DIR, "labels.json")
 
+# Confidence values assigned in ner_detector.py — used for the threshold sweep.
+NER_THRESHOLDS = [
+    (1.00, "regex only          (threshold ≥ 1.00)"),
+    (0.75, "+ PERSON            (threshold ≥ 0.75)"),
+    (0.70, "+ LOCATION          (threshold ≥ 0.70)"),
+    (0.65, "+ ORGANIZATION      (threshold ≥ 0.65)"),
+    (0.60, "+ DATE / all NER    (threshold ≥ 0.60)"),
+]
+
 
 def _spans_overlap(a_start, a_end, b_start, b_end) -> bool:
     return a_start < b_end and a_end > b_start
@@ -63,40 +72,33 @@ def _precision_recall_f1(tp, fp, fn):
     return precision, recall, f1
 
 
-def _to_pred_dicts(detections, detector_filter=None):
+def _to_pred_dicts(detections, detector_filter=None, min_confidence=0.0):
     result = []
     for d in detections:
         if detector_filter and d.detector != detector_filter:
             continue
+        if d.confidence < min_confidence:
+            continue
         result.append({
             "line_number": d.line_number,
             "entity_type": d.entity_type,
+            "text": d.text,
             "start": d.start,
             "end": d.end,
+            "confidence": d.confidence,
         })
     return result
 
 
-def run_evaluation(detector_filter=None, label="ALL"):
-    with open(LABELS_PATH, "r", encoding="utf-8") as f:
-        ground_truth = json.load(f)
-
-    engine = PIIEngine(use_ner=True)
-    detections = engine.scan_txt_file(TEXT_PATH)
+def run_evaluation(detections, ground_truth, detector_filter=None, label="ALL"):
     predictions = _to_pred_dicts(detections, detector_filter)
-
     tp, fp, fn = _match(predictions, ground_truth)
     precision, recall, f1 = _precision_recall_f1(len(tp), len(fp), len(fn))
 
-    print(f"\n=== Evaluation: {label} ===")
-    print(f"True Positives:  {len(tp)}")
-    print(f"False Positives: {len(fp)}")
-    print(f"False Negatives: {len(fn)}")
-    print(f"Precision: {precision:.3f}")
-    print(f"Recall:    {recall:.3f}")
-    print(f"F1 Score:  {f1:.3f}")
+    print(f"\n=== {label} ===")
+    print(f"TP {len(tp):>4}  FP {len(fp):>4}  FN {len(fn):>4}  |  "
+          f"Precision {precision:.3f}  Recall {recall:.3f}  F1 {f1:.3f}")
 
-    # Per entity-type breakdown
     by_type = defaultdict(lambda: {"tp": 0, "fp": 0, "fn": 0})
     for d in tp:
         by_type[d["entity_type"]]["tp"] += 1
@@ -105,13 +107,42 @@ def run_evaluation(detector_filter=None, label="ALL"):
     for d in fn:
         by_type[d["entity_type"]]["fn"] += 1
 
-    print(f"\n{'Entity Type':<18}{'Precision':<12}{'Recall':<12}{'F1':<8}")
+    print(f"\n  {'Entity type':<18}{'TP':>5}{'FP':>5}{'FN':>5}  "
+          f"{'Precision':<12}{'Recall':<12}{'F1'}")
     for entity_type in sorted(by_type):
-        counts = by_type[entity_type]
-        p, r, f = _precision_recall_f1(counts["tp"], counts["fp"], counts["fn"])
-        print(f"{entity_type:<18}{p:<12.3f}{r:<12.3f}{f:<8.3f}")
+        c = by_type[entity_type]
+        p, r, f = _precision_recall_f1(c["tp"], c["fp"], c["fn"])
+        print(f"  {entity_type:<18}{c['tp']:>5}{c['fp']:>5}{c['fn']:>5}  "
+              f"{p:<12.3f}{r:<12.3f}{f:.3f}")
 
-    return {"precision": precision, "recall": recall, "f1": f1}
+    return {"precision": precision, "recall": recall, "f1": f1}, tp, fp, fn
+
+
+def analyze_false_positives(fp_list, entity_type="ORGANIZATION", limit=12):
+    """Print text samples from false positive detections for a given entity type."""
+    hits = [d for d in fp_list if d["entity_type"] == entity_type]
+    if not hits:
+        print(f"\n  No false positives found for {entity_type}.")
+        return
+    print(f"\n=== False positive samples: {entity_type} (showing up to {limit}) ===")
+    for d in hits[:limit]:
+        print(f"  line {d['line_number']:>3}  conf {d['confidence']:.2f}  \"{d['text']}\"")
+    if len(hits) > limit:
+        print(f"  ... and {len(hits) - limit} more")
+
+
+def run_threshold_sweep(detections, ground_truth):
+    """Show how overall precision/recall change as the confidence threshold drops,
+    adding each NER entity type in turn."""
+    print("\n=== Confidence threshold sweep ===")
+    print(f"  {'Operating point':<42}{'TP':>5}{'FP':>5}{'FN':>5}  "
+          f"{'Precision':<12}{'Recall':<10}{'F1'}")
+    for threshold, label in NER_THRESHOLDS:
+        preds = _to_pred_dicts(detections, min_confidence=threshold)
+        tp, fp, fn = _match(preds, ground_truth)
+        p, r, f = _precision_recall_f1(len(tp), len(fp), len(fn))
+        print(f"  {label:<42}{len(tp):>5}{len(fp):>5}{len(fn):>5}  "
+              f"{p:<12.3f}{r:<10.3f}{f:.3f}")
 
 
 def main():
@@ -119,9 +150,23 @@ def main():
         print("Test dataset not found. Run: python data_gen/generate_test_data.py")
         return
 
-    run_evaluation(detector_filter=None, label="Combined (regex + NER)")
-    run_evaluation(detector_filter="regex", label="Regex detectors only")
-    run_evaluation(detector_filter="ner", label="NER detector only")
+    with open(LABELS_PATH, "r", encoding="utf-8") as f:
+        ground_truth = json.load(f)
+
+    engine = PIIEngine(use_ner=True)
+    detections = engine.scan_txt_file(TEXT_PATH)
+
+    _, tp_all, fp_all, _ = run_evaluation(
+        detections, ground_truth, detector_filter=None, label="Combined (regex + NER)"
+    )
+    run_evaluation(detections, ground_truth, detector_filter="regex", label="Regex only")
+    run_evaluation(detections, ground_truth, detector_filter="ner",   label="NER only")
+
+    run_threshold_sweep(detections, ground_truth)
+
+    # Show what spaCy is tagging as ORGANIZATION when it shouldn't be.
+    print()
+    analyze_false_positives(fp_all, entity_type="ORGANIZATION")
 
 
 if __name__ == "__main__":

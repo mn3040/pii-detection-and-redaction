@@ -20,3 +20,5 @@ jobs:
           python -m spacy download en_core_web_sm
       - name: Run tests
         run: pytest tests/ -v
+      - name: Run adversarial eval
+        run: python eval/adversarial_cases.py
