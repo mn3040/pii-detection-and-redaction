@@ -162,6 +162,23 @@ misses unstructured PII, while NER improves recall and introduces more false
 positives. Reporting the detector family and confidence score makes those
 tradeoffs visible to downstream reviewers.
 
+### Known Limitations
+
+**ORGANIZATION (F1 0.357):** spaCy's `en_core_web_sm` model tags many
+capitalized common nouns as organizations — words like "SSN" or "Card" in
+the test sentences are flagged because they appear mid-sentence in uppercase.
+This is a well-documented weakness of small NER models on non-news text. A
+larger model (`en_core_web_trf`) or a domain-specific fine-tuned model would
+reduce this substantially at higher inference cost.
+
+**STREET_ADDRESS (F1 0.333):** The regex is intentionally conservative — it
+anchors on a street number followed by a capitalized name and a recognized
+suffix word (Street, Avenue, Drive, etc.). This design keeps precision at 1.0
+but misses addresses that use abbreviations (`123 Main St Apt 4B`), omit the
+suffix (`742 Evergreen`), or follow non-US conventions. Recall could be
+improved by adding more suffix variants and relaxing the capitalization
+requirement, at the cost of more false positives in ordinary text.
+
 ## GitHub Pages Demo
 
 The `docs/` directory contains a static browser demo for the regex detector
