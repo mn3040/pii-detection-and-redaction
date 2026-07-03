@@ -113,8 +113,18 @@ class StreetAddressDetector:
     # the detector reports lower confidence than stricter identifiers.
     PATTERN = re.compile(
         r"\b\d{1,6}\s+[A-Z][A-Za-z0-9.'\s]{0,40}?\s+"
-        r"(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Dr|"
-        r"Court|Ct|Place|Pl|Way|Terrace|Ter|Circle|Cir)\b\.?",
+        r"(?:Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Lane|Ln|Drive|Drives|Dr|"
+        r"Court|Ct|Place|Pl|Way|Terrace|Ter|Circle|Cir|Trail|Trl|Grove|Grv|"
+        r"Creek|Crk|Common|Cmn|Bypass|Byp|Square|Squares|Sq|Point|Points|Pt|"
+        r"Port|Hills|Hls|Oval|Plains|Plns|Brook|Brooks|Brk|Cliff|Cliffs|Clfs|"
+        r"Mountain|Mountains|Mtn|Stream|Strm|Pass|Hollow|Holw|Wall|Mews|"
+        r"Crossing|Xing|Parkway|Pkwy|Highway|Hwy|Pike|Run|Ridge|Rdg|"
+        r"Alley|Aly|Bend|Branch|Brch|Canyon|Cnyn|Dale|Dl|"
+        r"Loop|Lp|Cove|Coves|Cv|Forest|Frst|Lock|Locks|"
+        r"Lake|Lakes|Lk|Valley|Vly|Heights|Hts|Harbor|Hbr|"
+        r"Knoll|Knolls|Knl|Vista|Vst|Springs|Spgs|Meadows|Mdws|"
+        r"Gardens|Gdns|Estates|Est|Key|Prairie|Pr|Flats|Flts|"
+        r"Shoals|Shls|Neck|Nck|Land|Rest|Rst)\b\.?",
         re.IGNORECASE,
     )
 
