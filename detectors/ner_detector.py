@@ -21,6 +21,10 @@ LABEL_BASE_CONFIDENCE = {
     "DATE": 0.6,
 }
 
+ORG_BLOCKLIST = {"SSN", "Card", "Email", "Phone", "Address"}
+ORG_SUFFIXES_LOWER = {"inc", "ltd", "llc", "corp", "company", "co",
+                      "hospital", "university", "school", "institute", "foundation"}
+
 
 class SpacyNERDetector:
     name = "ner_spacy"
@@ -44,6 +48,8 @@ class SpacyNERDetector:
         for ent in doc.ents:
             if ent.label_ not in RELEVANT_LABELS:
                 continue
+            if ent.label_ == "ORG" and not self._is_valid_org(ent.text):
+                continue
             confidence = LABEL_BASE_CONFIDENCE.get(ent.label_, 0.5)
             results.append(
                 PartialDetection(
@@ -56,3 +62,10 @@ class SpacyNERDetector:
                 )
             )
         return results
+
+    def _is_valid_org(self, text: str) -> bool:
+        if text.strip() in ORG_BLOCKLIST:
+            return False
+        words = text.split()
+        has_suffix = any(w.rstrip(".").lower() in ORG_SUFFIXES_LOWER for w in words)
+        return has_suffix or len(words) >= 2
