@@ -27,7 +27,7 @@ hand-wavy. Every rule is readable, testable, and easy to extend.
 - Write redacted copies with `[REDACTED_TYPE]` placeholders, resolving overlaps
   before masking so offsets never corrupt.
 - Evaluate detection quality with precision, recall, and F1 against synthetic
-  labeled data — no real PII in the repository.
+  labeled data, no real PII in the repository.
 - Run the pipeline from the CLI or explore the regex layer interactively in your
   browser.
 
@@ -40,7 +40,7 @@ I wanted to understand the rules instead of trusting them. This project focuses
 on transparency: every regex is annotated, every confidence score is derived from
 a documented heuristic, and the evaluation pipeline makes it clear exactly where
 the detectors succeed and where they fall short. The goal is a system you can
-read, audit, and extend — not one you configure and hope for the best.
+read, audit, and extend, not one you configure and hope for the best.
 
 ## Architecture
 
@@ -72,7 +72,7 @@ That contract keeps new PII types small: add a detector class, register it, and
 the CLI, reporting, masking, and evaluation code continue to work unchanged.
 
 Detectors are defined as a `Protocol` rather than a base class. That means any
-object with the right `detect` method signature is a valid detector — there's
+object with the right `detect` method signature is a valid detector, there's
 nothing to subclass, no boilerplate to inherit. Python's structural typing checks
 that the interface is satisfied without enforcing a class hierarchy.
 
@@ -193,7 +193,7 @@ The Luhn algorithm is a checksum used by every major card network to catch
 transcription errors. Walk the digit string right to left: double every second
 digit, subtract 9 from any result above 9, sum everything. A valid card number
 sums to a multiple of 10. Implementing it here means the detector never flags a
-random 16-digit number — only structurally valid card numbers pass.
+random 16-digit number, only structurally valid card numbers pass.
 
 **IP address** — Matches four dot-separated octets and validates each one against
 `0`–`255`. This is done with a regex that enumerates the valid ranges
@@ -202,7 +202,7 @@ three-digit sequence and checking numerically.
 
 **Street address** — Matches a street number followed by a capitalized name and a
 recognized suffix word (Street, Avenue, Drive, Road, etc.), case-insensitively.
-Confidence is `0.85` — the format is distinctive but not unique the way an SSN
+Confidence is `0.85`, the format is distinctive but not unique the way an SSN
 or email is.
 
 **Date of birth** — Matches `MM/DD/YYYY`, `YYYY-MM-DD`, and `MM-DD-YYYY`, with
@@ -301,7 +301,7 @@ detectors in JavaScript, renders detections as color-coded inline highlights wit
 hover tooltips, and shows the masked output and a detections table side by side.
 
 The JS port mirrors the Python detector logic as closely as the language allows.
-The Luhn algorithm, the SSN exclusion lookaheads, the phone lookbehind — all of
+The Luhn algorithm, the SSN exclusion lookaheads, the phone lookbehind, all of
 it is in `docs/detectors.js`, readable and testable in the browser console.
 
 Deployment is handled by `.github/workflows/pages.yml`, which publishes `docs/`
@@ -324,5 +324,5 @@ three-way overlaps resolve to the single best detection.
 
 This first version intentionally excludes OCR and image detection, multilingual
 models, and production access controls. The goal is a focused text pipeline with
-transparent behavior and measurable accuracy — not a replacement for production
+transparent behavior and measurable accuracy, not a replacement for production
 systems like Microsoft Presidio or AWS Comprehend.
