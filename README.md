@@ -5,15 +5,16 @@
 Most PII detection tools are configuration files on top of a black box. You
 point them at data, get flags back, and have no clear sense of what fired or
 why. I wanted to understand how the rules actually work, so I built every
-detector from scratch.
+detector from scratch — then benchmarked it against Microsoft Presidio to see
+where a purpose-built pipeline wins and where it loses.
 
 This project scans `.txt`, `.csv`, and `.json` files for personally identifiable
 information using two layers: strict regex rules for structured formats (SSNs,
 emails, phones, credit cards, IPs, addresses, dates of birth) and a spaCy NER
 model for unstructured text (names, places, organizations). It reports exact
-character spans, writes redacted copies, and evaluates precision and recall
-against a synthetic labeled dataset so the tradeoffs are measurable instead of
-hand-wavy. Every rule is readable, testable, and easy to extend.
+character spans, writes redacted copies, evaluates precision and recall against
+synthetic labeled data, and includes an adversarial test suite that probes
+evasion techniques regex-based detection cannot handle.
 
 **Try it live:** https://mn3040.github.io/pii-detection-and-redaction/
 
@@ -21,15 +22,15 @@ hand-wavy. Every rule is readable, testable, and easy to extend.
 
 - Detect SSNs, emails, phone numbers, credit cards, IP addresses, street
   addresses, and dates of birth using purpose-built regex detectors.
-- Detect names, locations, and organizations using spaCy NER.
+- Detect names, locations, and organizations using spaCy NER with a
+  post-filter that rejects detections that fail a legitimacy check.
 - Write a findings report (JSON or CSV) with entity type, matched text,
   character span, confidence score, source file, and line number.
 - Write redacted copies with `[REDACTED_TYPE]` placeholders, resolving overlaps
   before masking so offsets never corrupt.
-- Evaluate detection quality with precision, recall, and F1 against synthetic
-  labeled data, no real PII in the repository.
-- Run the pipeline from the CLI or explore the regex layer interactively in your
-  browser.
+- Evaluate against a synthetic test set, an adversarial edge-case suite, and
+  the CoNLL-2003 newswire corpus for domain-transfer measurement.
+- Compare directly against Microsoft Presidio on the same test set.
 
 ## Why I Built This
 
@@ -39,8 +40,9 @@ detection logic behind policy files and dashboards.
 I wanted to understand the rules instead of trusting them. This project focuses
 on transparency: every regex is annotated, every confidence score is derived from
 a documented heuristic, and the evaluation pipeline makes it clear exactly where
-the detectors succeed and where they fall short. The goal is a system you can
-read, audit, and extend, not one you configure and hope for the best.
+the detectors succeed and where they fall short. Building from scratch and then
+benchmarking against a production library is the only honest way to know what
+the tradeoffs actually are.
 
 ## Architecture
 
@@ -64,7 +66,7 @@ Input files
                     promote to Detection (source_file, line_number)
                         │
                     Redactor
-                        ├── write_report()    → JSON / CSV
+                        ├── write_report()          → JSON / CSV
                         └── write_masked_directory() → redacted copies
 ```
 
@@ -72,28 +74,34 @@ That contract keeps new PII types small: add a detector class, register it, and
 the CLI, reporting, masking, and evaluation code continue to work unchanged.
 
 Detectors are defined as a `Protocol` rather than a base class. That means any
-object with the right `detect` method signature is a valid detector, there's
-nothing to subclass, no boilerplate to inherit. Python's structural typing checks
-that the interface is satisfied without enforcing a class hierarchy.
+object with the right `detect` method signature is a valid detector — nothing to
+subclass, no boilerplate to inherit. Python's structural typing checks the
+interface is satisfied without enforcing a class hierarchy.
 
 ## Project Layout
 
 ```text
-pii_scan.py                 CLI entry point
-engine.py                   Orchestrates detectors over input files
-redactor.py                 Report writer and mask writer
+pii_scan.py                   CLI entry point
+engine.py                     Orchestrates detectors over input files
+redactor.py                   Report writer and mask writer
 detectors/
-  base.py                   Detection dataclasses and Detector protocol
-  regex_detectors.py        Structured PII detectors
-  ner_detector.py           spaCy NER wrapper
+  base.py                     Detection dataclasses and Detector protocol
+  regex_detectors.py          Structured PII detectors
+  ner_detector.py             spaCy NER wrapper with legitimacy post-filter
 data_gen/
-  generate_test_data.py     Synthetic labeled test set generator
+  generate_test_data.py       Synthetic labeled test set generator
 eval/
-  evaluate.py               Precision / recall / F1 evaluator
-  test_dataset/             Generated labels and text
-docs/                       GitHub Pages browser demo
-tests/                      pytest unit tests
-sample_data/                Example input file
+  evaluate.py                 Precision / recall / F1 with threshold sweep
+  adversarial_cases.py        Hand-crafted edge cases and evasion tests
+  conll_eval.py               CoNLL-2003 domain-transfer evaluation
+  presidio_compare.py         Side-by-side comparison vs. Microsoft Presidio
+  plots.py                    Generates all charts from live eval results
+  test_dataset/               Generated labels and text
+docs/
+  assets/                     Charts generated by eval/plots.py
+  index.html / app.js / ...   GitHub Pages browser demo
+tests/                        pytest unit tests
+sample_data/                  Example input file
 requirements.txt
 ```
 
@@ -183,38 +191,48 @@ plus-addressing (`jane+work@sub.example.co.uk`).
 
 **Phone** — Matches US formats with dashes, dots, parentheses, or spaces, with
 an optional `+1` country code. Lookbehind and lookahead assertions prevent the
-pattern from matching a slice out of a longer digit string (so a credit card
-number doesn't produce a phone hit).
+pattern from matching a slice out of a longer digit string so a credit card
+number never produces a phone hit.
 
 **Credit card** — Matches 13–19 digit strings with optional space or dash
-separators, then runs a Luhn checksum before accepting the match.
-
-The Luhn algorithm is a checksum used by every major card network to catch
-transcription errors. Walk the digit string right to left: double every second
-digit, subtract 9 from any result above 9, sum everything. A valid card number
-sums to a multiple of 10. Implementing it here means the detector never flags a
-random 16-digit number, only structurally valid card numbers pass.
+separators, then runs a Luhn checksum before accepting the match. The Luhn
+algorithm is a checksum used by every major card network to catch transcription
+errors. Walk the digit string right to left: double every second digit, subtract
+9 from any result above 9, sum everything. A valid card number sums to a
+multiple of 10. This means the detector never flags a random 16-digit number —
+only structurally valid card numbers pass.
 
 **IP address** — Matches four dot-separated octets and validates each one against
-`0`–`255`. This is done with a regex that enumerates the valid ranges
-(`25[0-5]`, `2[0-4]\d`, `1\d{2}`, `[1-9]\d`, `\d`) rather than matching any
-three-digit sequence and checking numerically.
+`0`–`255` by enumerating valid ranges (`25[0-5]`, `2[0-4]\d`, `1\d{2}`,
+`[1-9]\d`, `\d`) rather than matching any three-digit sequence.
 
 **Street address** — Matches a street number followed by a capitalized name and a
-recognized suffix word (Street, Avenue, Drive, Road, etc.), case-insensitively.
-Confidence is `0.85`, the format is distinctive but not unique the way an SSN
-or email is.
+recognized suffix word. The suffix list covers 60+ USPS street suffix types
+including full words (`Street`, `Avenue`, `Trail`) and abbreviations (`St`,
+`Ave`, `Trl`), as well as less common types Faker generates (`Loop`, `Cove`,
+`Forest`, `Mews`). Confidence is `0.85`.
 
-**Date of birth** — Matches `MM/DD/YYYY`, `YYYY-MM-DD`, and `MM-DD-YYYY`, with
+**Date of birth** — Matches `MM/DD/YYYY`, `YYYY-MM-DD`, and `MM-DD-YYYY` with
 the year range restricted to `1900`–`2019`. Dates in the current decade are
-excluded to avoid matching recent timestamps. Confidence is `0.8`.
+excluded to avoid flagging recent timestamps. Confidence is `0.8`.
 
 ### NER detector (`detectors/ner_detector.py`)
 
-The spaCy wrapper runs `en_core_web_sm` and maps entity labels to the pipeline's
-entity types: `PERSON`, `GPE` → `LOCATION`, `ORG` → `ORGANIZATION`, `DATE`.
-Confidence scores are fixed per label based on how reliable `en_core_web_sm` is
-for each type in practice:
+The spaCy detector runs `en_core_web_sm` and maps entity labels to the
+pipeline's entity types. After spaCy returns results, an `_is_valid_org`
+post-filter screens every ORGANIZATION detection:
+
+1. **Blocklist check** — single tokens like `SSN`, `Card`, `Email` are rejected
+   immediately. These are the most common false positives from small NER models
+   on structured-PII text.
+2. **Legitimacy check** — the detection is accepted only if it contains a
+   recognized corporate suffix (`Inc`, `LLC`, `Corp`, `University`, etc.) or is
+   at least two words long.
+
+This filter improved ORGANIZATION precision from 0.227 to 0.800 — the
+difference between a detector that's noise and one that's useful.
+
+Confidence scores are heuristics, not calibrated probabilities:
 
 | spaCy label | Maps to | Confidence |
 |---|---|---:|
@@ -223,20 +241,14 @@ for each type in practice:
 | ORG | ORGANIZATION | 0.65 |
 | DATE | DATE | 0.60 |
 
-These are heuristics, not calibrated probabilities. They exist so the redactor
-can resolve conflicts when a regex match and a NER match overlap on the same
-span — higher confidence wins.
+These exist so the redactor can resolve conflicts when a regex match and a NER
+match overlap — higher confidence wins.
 
 ### Overlap resolution (`redactor.py`)
 
-Running two detectors over the same text means two detections can cover the same
-characters. Masking both independently would corrupt the offsets for everything
-that follows.
-
 Before any span is replaced, `_resolve_overlaps` sorts all detections by
-confidence descending (then by span length descending as a tiebreaker), then
-iterates and skips any detection whose span touches an already-claimed one. The
-result is a set of non-overlapping spans. Replacements are then applied
+confidence descending (then by span length as a tiebreaker), iterates, and skips
+any detection whose span touches an already-claimed one. Replacements are applied
 right-to-left so earlier offsets stay valid throughout.
 
 ## Evaluation
@@ -251,17 +263,18 @@ produces SSNs with dashes, emails in standard form, and US-format phone numbers.
 The regex detectors were written with those exact formats in mind, so near-perfect
 regex scores on Faker data are partly self-fulfilling.
 
-Two things break that circularity: a hand-crafted adversarial suite that targets
-formats Faker never generates, and a domain-transfer check against the CoNLL-2003
-newswire corpus, which the detectors were not designed for.
+Three things break that circularity: a hand-crafted adversarial suite covering
+evasion techniques, a domain-transfer check against the CoNLL-2003 newswire
+corpus, and a direct comparison against Microsoft Presidio on the same test set.
 
 Run everything:
 
 ```bash
 python data_gen/generate_test_data.py   # regenerate synthetic test set
 python eval/evaluate.py                 # main eval with threshold sweep
-python eval/adversarial_cases.py        # edge cases and failure analysis
-python eval/conll_eval.py               # domain-transfer check (requires: pip install datasets)
+python eval/adversarial_cases.py        # edge cases and evasion analysis
+python eval/conll_eval.py               # domain-transfer (requires: pip install datasets)
+python eval/presidio_compare.py         # vs. Microsoft Presidio
 python eval/plots.py                    # regenerate all charts from live results
 ```
 
@@ -271,109 +284,134 @@ python eval/plots.py                    # regenerate all charts from live result
 
 | Detector set | Precision | Recall | F1 |
 |---|---:|---:|---:|
-| Regex only | 1.000 | 0.536 | 0.698 |
-| NER only | 0.379 | 0.371 | 0.375 |
-| Combined regex + NER | 0.599 | 0.907 | 0.721 |
+| Regex only | 1.000 | 0.577 | 0.732 |
+| NER only | 0.443 | 0.361 | 0.398 |
+| Combined (threshold ≥ 0.65) | 0.919 | 0.938 | 0.929 |
 
-The regex numbers look good because Faker generates exactly the formats the
-patterns target. The NER numbers are more honest — spaCy runs on text it has
-never seen and gets partial credit for unstructured entities.
+The recommended operating point is confidence threshold ≥ 0.65. At this
+threshold, PERSON, LOCATION, and ORGANIZATION are included; NER DATE
+detections are excluded. spaCy's `DATE` entity matches all dates — meeting
+dates, publication dates, timestamps — not just birth dates. Including it at
+threshold ≥ 0.60 drops overall precision from 0.919 to 0.674 with no recall
+gain, because every NER-detected date is a false positive relative to our
+`DATE_OF_BIRTH` ground truth.
 
-### Precision-recall tradeoff by entity type
+### Precision-recall by entity type
 
 ![Precision-recall scatter](docs/assets/pr-scatter.png)
 
-The scatter plot shows each entity type as a single point. Top-right is ideal.
-The six regex-detected structured types cluster at (1.0, 1.0). PERSON and
-LOCATION sit in the upper-right with real but imperfect scores. STREET_ADDRESS
-sits at the top-left — precision is 1.0 but recall is 0.2, because the regex
-anchors on a recognized suffix word and misses abbreviated forms. ORGANIZATION
-sits at the bottom-right — spaCy recalls most true organizations but tags
-capitalized common nouns (like "SSN" or "Card" in the test sentences) as
-organizations too. At P=0.23, three out of four ORGANIZATION detections are
-false positives.
+| Entity type | Precision | Recall | F1 | Detector |
+|---|---:|---:|---:|---|
+| SSN | 1.000 | 1.000 | 1.000 | regex |
+| EMAIL | 1.000 | 1.000 | 1.000 | regex |
+| PHONE | 1.000 | 1.000 | 1.000 | regex |
+| CREDIT_CARD | 1.000 | 1.000 | 1.000 | regex |
+| IP_ADDRESS | 1.000 | 1.000 | 1.000 | regex |
+| DATE_OF_BIRTH | 1.000 | 1.000 | 1.000 | regex |
+| STREET_ADDRESS | 1.000 | 1.000 | 1.000 | regex |
+| PERSON | 0.808 | 0.875 | 0.840 | NER |
+| LOCATION | 0.833 | 0.909 | 0.870 | NER |
+| ORGANIZATION | 0.800 | 0.667 | 0.727 | NER + filter |
 
-### Confidence threshold and operating point
+STREET_ADDRESS improved from F1 0.333 to 1.000 after expanding the suffix list
+from 10 to 60+ USPS suffix types. ORGANIZATION improved from F1 0.357 to 0.727
+after adding the `_is_valid_org` post-filter. Both were diagnosed by examining
+actual Faker output rather than assuming the patterns were correct.
 
-The NER confidence scores (PERSON=0.75, GPE=0.70, ORG=0.65, DATE=0.60) are
-heuristics, not calibrated probabilities. They exist to pick a winner when a
-regex match and a NER match overlap, and to let users tune the operating point
-by setting a confidence floor.
+### Confidence threshold sweep
 
 ![Confidence threshold sweep](docs/assets/threshold-sweep.png)
 
-Raising the threshold from 0.65 to 0.70 excludes ORGANIZATION detections.
-That move trades a small recall drop for a substantial precision gain — the
-right choice for any application where false positives mean legitimate text
-gets masked.
+| Threshold | What's included | Precision | Recall | F1 |
+|---|---|---:|---:|---:|
+| ≥ 1.00 | Regex only | 1.000 | 0.505 | 0.671 |
+| ≥ 0.75 | + PERSON | 0.939 | 0.794 | 0.860 |
+| ≥ 0.70 | + LOCATION | 0.926 | 0.897 | 0.911 |
+| ≥ 0.65 | + ORGANIZATION | 0.919 | 0.938 | **0.929** |
+| ≥ 0.60 | + NER DATE (not recommended) | 0.674 | 0.938 | 0.784 |
 
-### Adversarial edge cases
+### Comparison against Microsoft Presidio
 
-The Faker suite only tests formats it knows how to generate. These 40 hand-crafted
-cases probe everything Faker never produces: alternative separators, international
-formats, false-positive traps (ZIP+4 codes that match SSN digit counts, version
-strings that match IP patterns), and NER ambiguity (Apple as a company vs. a
-fruit, Washington as a person vs. a city).
+Presidio is Microsoft's production-grade open-source PII detection library.
+Running both systems against the same test set shows exactly where a
+purpose-built pipeline wins and where it loses.
 
-![Adversarial results by category](docs/assets/adversarial-results.png)
+| Entity type | Presidio F1 | Ours F1 | Winner |
+|---|---:|---:|---|
+| DATE_OF_BIRTH | 0.103 | 1.000 | **Ours** |
+| PHONE | 0.857 | 1.000 | **Ours** |
+| LOCATION | 0.800 | 0.870 | **Ours** |
+| PERSON | 0.863 | 0.840 | Presidio |
+| EMAIL | 1.000 | 1.000 | Tie |
+| CREDIT_CARD | 1.000 | 1.000 | Tie |
+| SSN | 1.000 | 1.000 | Tie |
+| IP_ADDRESS | 1.000 | 1.000 | Tie |
 
-Expected failures — things the system is designed to miss — are documented as
-such. The chart separates deliberate design choices from genuine bugs.
+Run `python eval/presidio_compare.py` to reproduce. The DATE_OF_BIRTH gap is a
+methodology difference: Presidio detects all dates and reports everything as
+`DATE_TIME`, which produces massive false positives against our birth-date-only
+ground truth. Our year-range filter (`1900`–`2019`) is the reason for the
+difference. The PHONE and LOCATION wins reflect genuine pattern differences.
 
-**Known misses by design:**
+STREET_ADDRESS is excluded from this comparison — Presidio has no dedicated
+street address recognizer.
 
-- SSN with spaces (`412 34 5678`) and dots (`412.34.5678`) — regex anchors on
-  hyphens. Adding space/dot variants would also catch more false positives in
-  structured data.
-- Phone numbers in non-US formats (`+44 20 7946 0958`) — the detector is
-  explicitly US-only.
-- Dates written in natural language (`born on the 14th of March, 1991`) — regex
-  handles numeric formats only.
-- Street addresses without a recognized suffix word (`742 Evergreen`) — intentional
-  conservative tradeoff to keep precision at 1.0.
-- Internationalized email domains (`user@ünicode-domain.de`) — regex matches ASCII
-  characters only.
+### Adversarial robustness
 
-**Known NER false positives:**
+Regex-based PII detection is trivially evadable. The adversarial suite documents
+this explicitly rather than pretending otherwise.
 
-Capitalized acronyms and nouns in mid-sentence position are the core weakness
-of `en_core_web_sm` for this use case. "SSN", "Card", and similar tokens get
-tagged as ORGANIZATION because the model was trained on newswire text where
-unexplained capitalized words tend to be proper nouns.
+![Adversarial results](docs/assets/adversarial-results.png)
+
+**Evasion techniques that work against this pipeline:**
+
+- **Spacing**: `j o h n @ e x a m p l e . c o m` — inserting spaces breaks every
+  regex pattern. Recall drops to zero for any spaced PII.
+- **Unicode homoglyphs**: replacing `@` with fullwidth `＠` (U+FF20) or Latin
+  `a` with Cyrillic `а` (U+0430) produces text that looks identical to a human
+  but does not match ASCII patterns.
+- **Word form**: writing `"four one two dash three four dash five six seven eight"`
+  instead of `412-34-5678` requires semantic understanding that pattern matching
+  cannot provide.
+
+These are not bugs — they are the fundamental limitation of the approach. A
+production system addresses them with normalization preprocessing (homoglyphs),
+a larger NER model or LLM (word-form), and acceptance that a motivated adversary
+can always evade a rule-based system. The point of documenting them is to make
+that boundary explicit.
 
 ### Domain transfer: CoNLL-2003
 
-CoNLL-2003 is Reuters newswire from 1996, labeled with PERSON, ORG, LOC, and
-MISC. It has no structured PII (no SSNs, credit cards, or IP addresses), so
-only the NER detector can be compared here. Running `eval/conll_eval.py` shows
-how the spaCy detector performs on text it was not designed for. Scores are
-lower than on the Faker test set — that is the honest cost of domain shift, not
-a calibration issue. The structured-PII detectors have no CoNLL equivalent and
-are excluded from this comparison.
+CoNLL-2003 is Reuters newswire from 1996 labeled with PERSON, ORG, and LOC. It
+has no structured PII, so only the NER detector can be compared here. Running
+`eval/conll_eval.py` shows performance on text the system was not designed for.
+Scores are lower than on the Faker test set — that is the honest cost of domain
+shift, not a calibration issue.
 
 ### Production recommendation
 
 | Entity type | Recommended for automated redaction? |
 |---|---|
 | SSN, EMAIL, PHONE, CREDIT_CARD, IP_ADDRESS, DATE_OF_BIRTH | Yes — regex, precision 1.0 |
-| PERSON, LOCATION | Yes — NER, precision 0.81–0.83, acceptable for most use cases |
-| STREET_ADDRESS | With review — precision 1.0 but recall 0.2; misses most addresses |
-| ORGANIZATION | No — precision 0.23 means 3 in 4 flags are false positives |
+| STREET_ADDRESS | Yes — precision 1.0, recall 1.0 on standard US formats |
+| PERSON, LOCATION | Yes — NER, precision 0.81–0.83 |
+| ORGANIZATION | With review — precision 0.80 after filter, but recall 0.67 |
+| NER DATE | No — use DATE_OF_BIRTH regex instead |
 
-Exclude ORGANIZATION from any pipeline where masking false positives has a real
-cost. Use `--no-ner` if only structured PII is needed, or set a confidence
-threshold of 0.70 to include PERSON and LOCATION while dropping ORGANIZATION.
+Use confidence threshold ≥ 0.65 as the default operating point. Use `--no-ner`
+for structured-only scans where precision matters more than recall.
 
 ## GitHub Pages Demo
 
 The `docs/` directory is a client-side reimplementation of the regex detector
 layer — no Python backend, nothing sent to a server. It runs the same seven
-detectors in JavaScript, renders detections as color-coded inline highlights with
-hover tooltips, and shows the masked output and a detections table side by side.
+detectors in JavaScript, renders detections as color-coded inline highlights
+with hover tooltips, and shows the masked output and a detections table side
+by side.
 
-The JS port mirrors the Python detector logic as closely as the language allows.
-The Luhn algorithm, the SSN exclusion lookaheads, the phone lookbehind, all of
-it is in `docs/detectors.js`, readable and testable in the browser console.
+The JS port mirrors the Python detector logic directly. The Luhn algorithm, the
+SSN exclusion lookaheads, the phone lookbehind — all of it is in
+`docs/detectors.js`, readable and testable in the browser console.
 
 Deployment is handled by `.github/workflows/pages.yml`, which publishes `docs/`
 to GitHub Pages whenever `main` changes.
@@ -393,7 +431,8 @@ three-way overlaps resolve to the single best detection.
 
 ## Out of Scope
 
-This first version intentionally excludes OCR and image detection, multilingual
+This version intentionally excludes OCR and image detection, multilingual
 models, and production access controls. The goal is a focused text pipeline with
-transparent behavior and measurable accuracy, not a replacement for production
-systems like Microsoft Presidio or AWS Comprehend.
+transparent behavior and measurable accuracy. For production deployments, see
+Microsoft Presidio or AWS Comprehend — this project's value is in the
+explainability and the documented tradeoffs, not in replacing those tools.
