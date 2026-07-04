@@ -309,6 +309,102 @@ CASES = [
         "category": "NER false positive trap",
         "note": "'Card' as a capitalized noun — known false positive with en_core_web_sm",
     },
+
+    # ── Evasion: spacing/formatting obfuscation ──────────────────────────────
+    # These cases show that inserting spaces or unusual separators breaks every
+    # regex pattern. A motivated person can evade detection trivially.
+    {
+        "text": "Reach me at j o h n @ e x a m p l e . c o m",
+        "entity_type": "EMAIL",
+        "expect": False,
+        "category": "Evasion: spacing",
+        "note": "spaces inserted between every character — regex requires contiguous match",
+    },
+    {
+        "text": "My SSN is 4 1 2 - 3 4 - 5 6 7 8",
+        "entity_type": "SSN",
+        "expect": False,
+        "category": "Evasion: spacing",
+        "note": "spaces between every digit — pattern requires NNN-NN-NNNN with no internal spaces",
+    },
+    {
+        "text": "Card: 4-5-3-2-0-1-5-1-1-2-8-3-0-3-6-6",
+        "entity_type": "CREDIT_CARD",
+        "expect": False,
+        "category": "Evasion: spacing",
+        "note": "dash between every digit — Luhn check never runs because digit grouping fails",
+    },
+    {
+        "text": "Call (5 5 5) 8 6 7 - 5 3 0 9",
+        "entity_type": "PHONE",
+        "expect": False,
+        "category": "Evasion: spacing",
+        "note": "spaces inside area code and exchange — phone pattern requires contiguous digit groups",
+    },
+
+    # ── Evasion: unicode homoglyphs ───────────────────────────────────────────
+    # Visually identical characters from other Unicode blocks pass human review
+    # but are different code points — regex matches only the ASCII target.
+    {
+        "text": "аdmin@example.com",
+        "entity_type": "EMAIL",
+        "expect": False,
+        "category": "Evasion: homoglyph",
+        "note": "first 'a' is Cyrillic U+0430 — visually identical to Latin 'a' but not matched by \\w",
+    },
+    {
+        "text": "john＠example.com",
+        "entity_type": "EMAIL",
+        "expect": False,
+        "category": "Evasion: homoglyph",
+        "note": "@ is fullwidth U+FF20 — regex matches only ASCII U+0040",
+    },
+    {
+        "text": "SSN: 412‑34‑5678",
+        "entity_type": "SSN",
+        "expect": False,
+        "category": "Evasion: homoglyph",
+        "note": "hyphens replaced with en-dash U+2011 — pattern requires ASCII hyphen U+002D",
+    },
+    {
+        "text": "IP address: 192․168․1․10",
+        "entity_type": "IP_ADDRESS",
+        "expect": False,
+        "category": "Evasion: homoglyph",
+        "note": "dots replaced with one-dot leader U+2024 — visually identical to period",
+    },
+
+    # ── Evasion: word-form obfuscation ───────────────────────────────────────
+    # Writing numbers or symbols as English words defeats every numeric pattern.
+    # This is the hardest evasion to catch — it requires semantic understanding.
+    {
+        "text": "My SSN is four one two dash three four dash five six seven eight",
+        "entity_type": "SSN",
+        "expect": False,
+        "category": "Evasion: word form",
+        "note": "SSN written as spoken English — no digits for the pattern to match",
+    },
+    {
+        "text": "Born March fourteenth, nineteen ninety one",
+        "entity_type": "DATE_OF_BIRTH",
+        "expect": False,
+        "category": "Evasion: word form",
+        "note": "date written in natural language — regex handles numeric formats only",
+    },
+    {
+        "text": "Email me at john at example dot com",
+        "entity_type": "EMAIL",
+        "expect": False,
+        "category": "Evasion: word form",
+        "note": "'at' and 'dot' as words — regex requires literal @ and . characters",
+    },
+    {
+        "text": "My card ends in four three six six",
+        "entity_type": "CREDIT_CARD",
+        "expect": False,
+        "category": "Evasion: word form",
+        "note": "partial card number as words — no digit run to match or Luhn-validate",
+    },
 ]
 
 
@@ -345,7 +441,7 @@ def run_adversarial_eval(use_ner: bool = True):
     print(f"Total: {total_pass + total_fail}  PASS: {total_pass}  FAIL: {total_fail}\n")
 
     print(f"{'Category':<32}{'Pass':>6}{'Fail':>6}")
-    print("─" * 46)
+    print("-" * 46)
     for cat in sorted(results_by_category):
         r = results_by_category[cat]
         print(f"{cat:<32}{r['pass']:>6}{r['fail']:>6}")
